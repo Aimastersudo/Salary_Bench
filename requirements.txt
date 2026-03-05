@@ -1,8 +1,0 @@
-streamlit
-pandas
-matplotlib
-plotly
-numpy
-fpdf
-xlsxwriter
-openpyxl
