@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,322 +10,592 @@ from fpdf import FPDF
 from salary_engine import load_csvs, build_engine
 from report_builder import build_excel_pack
 
+# -----------------------------
 # Page config
-st.set_page_config(page_title="PCI | Salary Intelligence", layout="wide")
+# -----------------------------
+st.set_page_config(
+    page_title="PCI Salary Benchmark Dashboard",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-st.markdown("""
+# -----------------------------
+# Modern UI CSS
+# -----------------------------
+BASE_CSS = """
 <style>
-.main { background-color: #0b0f19; color: #f8fafc; }
-[data-testid="stSidebar"] { background-color: #111827; border-right: 1px solid #1f2937; }
-.stMetric { background-color: #1f2937; padding: 20px; border-radius: 15px; border: 1px solid #374151; }
-.salary-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 25px; border-radius: 15px; border-left: 5px solid #3b82f6; margin-bottom: 20px; }
-.ai-insight-box { background-color: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 20px; border-radius: 12px; color: #93c5fd; font-size: 15px; line-height: 1.6; border-left: 5px solid #3b82f6; }
-.market-box { background-color: #1e293b; border: 1px solid #475569; padding: 15px; border-radius: 10px; text-align: center; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-.note-box { background-color: rgba(245, 158, 11, 0.1); border-left: 5px solid #f59e0b; padding: 15px; margin: 10px 0; border-radius: 5px; color: #fbbf24; }
-.value-text { color: #38bdf8; font-size: 18px; font-weight: bold; }
-.highlight-red { color: #ef4444; font-weight: bold; }
-.highlight-green { color: #22c55e; font-weight: bold; }
-.profile-card { background-color: #1f2937; padding: 20px; border-radius: 15px; border: 1px solid #3b82f6; }
+/* Fonts + base spacing */
+html, body, [class*="css"]  { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+.block-container { padding-top: 1.0rem; padding-bottom: 2.5rem; max-width: 1400px; }
+
+/* Remove default top padding */
+header { visibility: hidden; height: 0px; }
+
+/* Cards */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 650px)  { .kpi-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); } }
+
+.kpi-card {
+  border-radius: 16px;
+  padding: 16px 16px 14px 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(8px);
+}
+
+.kpi-title { font-size: 12px; opacity: 0.75; margin-bottom: 6px; }
+.kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; margin-bottom: 4px; }
+.kpi-sub   { font-size: 12px; opacity: 0.75; }
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  opacity: 0.9;
+  margin-left: 8px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 12px 0 4px 0;
+}
+
+.muted { opacity: 0.75; }
+
+hr.soft {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  margin: 14px 0;
+}
+
+/* Table title row */
+.table-head {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap: 12px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.small-help { font-size: 12px; opacity: 0.75; }
+
+.insight {
+  border-radius: 14px;
+  padding: 14px 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* Hide Streamlit footer */
+footer { visibility: hidden; }
 </style>
-""", unsafe_allow_html=True)
+"""
 
-# PDF generator
-def generate_graphical_pdf(f_df, avg_v, worst_d, total_hc, crit_df, loyalty_count):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_fill_color(15, 23, 42); pdf.rect(0, 0, 210, 40, 'F')
-    pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 18)
-    pdf.cell(190, 15, "PCI STRATEGIC SALARY INTELLIGENCE REPORT", 0, 1, 'C')
-    pdf.set_font("Arial", '', 10); pdf.cell(190, 5, f"Snapshot: {datetime.now().strftime('%d %b %Y')}", 0, 1, 'C')
-    pdf.ln(25); pdf.set_text_color(0, 0, 0); pdf.set_font("Arial", 'B', 14); pdf.set_fill_color(230, 235, 255)
-    pdf.cell(190, 10, " 1. Executive Summary", 1, 1, 'L', True)
-    pdf.set_font("Arial", '', 11)
-    summary = (f"Market Disparity (Avg Gap): {avg_v}% | Total Workforce: {total_hc} | Roles: {len(f_df)}\n\n"
-               f"Key Insight: The {worst_d} department shows the highest competitive risk. "
-               f"Recommended focus: align pay for {loyalty_count} loyal employees (5y+ tenure) "
-               f"and close critical gaps for high-demand technical roles.")
-    pdf.multi_cell(190, 8, summary, 1); pdf.ln(10)
-    pdf.set_font("Arial", 'B', 14); pdf.set_fill_color(255, 230, 230)
-    pdf.cell(190, 10, " 2. Critical High-Priority Gaps (<= -15%)", 1, 1, 'L', True)
-    pdf.set_font("Arial", 'B', 10); pdf.cell(90, 8, "Role", 1); pdf.cell(50, 8, "Dept", 1); pdf.cell(30, 8, "Gap %", 1); pdf.cell(20, 8, "HC", 1, 1)
-    pdf.set_font("Arial", '', 9)
-    for _, row in crit_df.head(15).iterrows():
-        pdf.cell(90, 7, str(row['Designation']), 1); pdf.cell(50, 7, str(row['Department']), 1)
-        pdf.cell(30, 7, f"{int(row['Variance %'])}%", 1); pdf.cell(20, 7, str(int(row['Live_HC'])), 1, 1)
-    pdf.ln(15); pdf.set_font("Arial", 'I', 8); pdf.cell(190, 5, "CONFIDENTIAL - PCI HR", 0, 1, 'C')
-    return pdf.output(dest='S').encode('latin-1')
+LIGHT_THEME_CSS = """
+<style>
+/* Light theme card background */
+.kpi-card { background: linear-gradient(135deg, rgba(0,0,0,0.03), rgba(0,0,0,0.01)); }
+.insight  { background: rgba(0,0,0,0.02); }
+</style>
+"""
 
-@st.cache_data
-def load_data(core_bytes, payroll_bytes, market_bytes, competitor_include):
-    # load from uploads or local
-    if core_bytes is None:
-        core_path = "salary_data.csv"
-        payroll_path = "actuals_payroll.csv"
-        market_path = "Market_salary.csv"
-        core_df, payroll_df, market_df = load_csvs(core_path, payroll_path, market_path)
+DARK_THEME_CSS = """
+<style>
+/* Dark theme card background */
+.kpi-card { background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); }
+.insight  { background: rgba(255,255,255,0.04); }
+</style>
+"""
+
+# -----------------------------
+# Theme state
+# -----------------------------
+if "theme_mode" not in st.session_state:
+    st.session_state["theme_mode"] = "Dark"
+
+def apply_theme(mode: str):
+    st.markdown(BASE_CSS, unsafe_allow_html=True)
+    if mode == "Light":
+        st.markdown(LIGHT_THEME_CSS, unsafe_allow_html=True)
     else:
-        core_df = pd.read_csv(core_bytes, encoding="utf-8-sig")
-        payroll_df = pd.read_csv(payroll_bytes, encoding="utf-8-sig")
-        market_df = pd.read_csv(market_bytes, encoding="utf-8-sig")
+        st.markdown(DARK_THEME_CSS, unsafe_allow_html=True)
 
-    res = build_engine(core_df, payroll_df, market_df, competitor_include=competitor_include)
-    return res.role_df, res.emp_df, res.competitor_columns, market_df
-
-# Sidebar
-with st.sidebar:
-    # logo
-    l_path = None
-    for ex in ["jpg", "png"]:
-        if os.path.exists(f"PCI_Logo.{ex}"):
-            l_path = f"PCI_Logo.{ex}"
-            break
-    if l_path:
-        st.image(l_path, use_container_width=True)
-
-    st.caption("Data Sources (optional uploads)")
-    up_core = st.file_uploader("Upload salary_data.csv (core roles)", type=["csv"])
-    up_payroll = st.file_uploader("Upload actuals_payroll.csv (employees)", type=["csv"])
-    up_market = st.file_uploader("Upload Market_salary.csv (competitors)", type=["csv"])
-
-    # competitor include list (needs market columns; load a tiny preview from local if no upload)
+# -----------------------------
+# Helpers
+# -----------------------------
+def fmt_aed(x):
     try:
-        if up_market is None:
-            m_preview = pd.read_csv("Market_salary.csv", encoding="utf-8-sig")
-        else:
-            m_preview = pd.read_csv(up_market, encoding="utf-8-sig")
-            up_market.seek(0)
-        m_preview.columns = m_preview.columns.str.strip()
-        all_companies = [c for c in m_preview.columns if c not in {"#", "Designation"}]
+        if pd.isna(x):
+            return "-"
+        return f"{float(x):,.0f}"
     except Exception:
-        all_companies = []
+        return "-"
 
-    st.markdown("---")
-    st.caption("Benchmark Scope")
-    competitor_include = st.multiselect("Include competitor companies", all_companies, default=all_companies)
+def safe_pct(x):
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return "-"
+    return f"{x:.1f}%"
 
-    page = st.radio("MENU", ["📊 Executive Dashboard", "📉 Market Analysis", "👥 PCI Employees", "📈 Increment Planner", "📦 Export"])
-    st.markdown("---")
+def choose_plotly_template(mode: str):
+    return "plotly_white" if mode == "Light" else "plotly_dark"
 
-    # load data (cache)
-    core_bytes = up_core if up_core is not None else None
-    payroll_bytes = up_payroll if up_payroll is not None else None
-    market_bytes = up_market if up_market is not None else None
+def build_kpi_card(title, value, subtitle="", badge_text=None):
+    badge_html = f'<span class="badge">{badge_text}</span>' if badge_text else ""
+    return f"""
+    <div class="kpi-card">
+      <div class="kpi-title">{title}{badge_html}</div>
+      <div class="kpi-value">{value}</div>
+      <div class="kpi-sub">{subtitle}</div>
+    </div>
+    """
 
-# Load
-df, emp_df, comp_cols, raw_market_df = load_data(core_bytes, payroll_bytes, market_bytes, competitor_include)
+def df_to_download_bytes(df: pd.DataFrame, filetype="csv"):
+    if filetype == "csv":
+        return df.to_csv(index=False).encode("utf-8")
+    elif filetype == "xlsx":
+        from io import BytesIO
+        bio = BytesIO()
+        with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Data")
+        return bio.getvalue()
+    return None
 
-# Filters
-with st.sidebar:
-    depts = sorted(df['Department'].dropna().unique().tolist())
-    sel_depts = st.multiselect("Filter Dept:", depts, default=depts)
+# -----------------------------
+# PDF report
+# -----------------------------
+class SimplePDF(FPDF):
+    def header(self):
+        self.set_font("Arial", "B", 12)
+        self.cell(0, 10, "Salary Benchmark Summary Report", ln=True, align="L")
+        self.ln(2)
 
-f_df = df[df['Department'].isin(sel_depts)].copy()
-f_emp = emp_df[emp_df['Department'].isin(sel_depts)].copy()
+def export_pdf_summary(summary_lines, out_path):
+    pdf = SimplePDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "", 10)
+    for line in summary_lines:
+        pdf.multi_cell(0, 6, line)
+    pdf.output(out_path)
 
-# Pages
-if page == "📊 Executive Dashboard":
-    st.title("Strategic Salary Benchmark Dashboard")
+# -----------------------------
+# Sidebar (Uploads + scope)
+# -----------------------------
+st.sidebar.markdown("## ⚙️ Settings")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Designations", len(f_df))
-    c2.metric("Total Headcount", int(f_df['Live_HC'].sum()))
-    mean_v = f_df['Variance %'].mean() if len(f_df) else 0
-    c3.metric("Avg. Market Gap", f"{int(mean_v) if pd.notna(mean_v) else 0}%")
-    c4.metric("Critical Roles (<= -20%)", int((f_df['Variance %'] <= -20).sum()))
+theme_mode = st.sidebar.radio(
+    "Theme",
+    ["Dark", "Light"],
+    index=0 if st.session_state["theme_mode"] == "Dark" else 1,
+    horizontal=True,
+)
+st.session_state["theme_mode"] = theme_mode
+apply_theme(theme_mode)
 
-    st.dataframe(
-        f_df[['Designation','Department','Employee Type','Live_HC',
-              'Your Salary (AED)','Benchmark_Low','Benchmark_Mid','Benchmark_High','Market_Avg','Variance %']],
-        use_container_width=True,
-        hide_index=True
-    )
+with st.sidebar.expander("📥 Upload / Replace CSVs", expanded=False):
+    st.caption("If you upload new files here, dashboard will use them immediately.")
+    upl_market = st.file_uploader("Market_salary.csv", type=["csv"], key="upl_market")
+    upl_payroll = st.file_uploader("actuals_payroll.csv", type=["csv"], key="upl_payroll")
+    upl_core = st.file_uploader("salary_data.csv (optional)", type=["csv"], key="upl_core")
 
-    st.markdown("---")
-    st.subheader("🔍 Role Deep-Dive")
-    sel_role = st.selectbox("Select a Role:", sorted(f_df['Designation'].unique()))
-    if sel_role:
-        row = f_df[f_df['Designation'] == sel_role].iloc[0]
-        gap = int(row['Variance %'])
-        st.markdown(
-            f"""<div class="salary-card"><div class="ai-insight-box">
-            <b>Insight:</b> {row['Designation']} is <b>{abs(gap)}%</b> {"below" if gap < 0 else "above"} the market average.
-            Benchmark range (midpoints): <b>{int(row['Benchmark_Low']):,}</b> to <b>{int(row['Benchmark_High']):,}</b> AED.
-            </div></div>""",
-            unsafe_allow_html=True
-        )
-        # company cards (original strings)
-        cols = st.columns(max(1, len(comp_cols)))
-        for i, c in enumerate(comp_cols):
-            val = str(row.get(c, "nan"))
-            with cols[i]:
-                st.markdown(
-                    f"""<div class="market-box"><small>{c}</small><br>
-                    <b class="value-text">{val if val not in ['nan','-','None'] else 'N/A'}</b></div>""",
-                    unsafe_allow_html=True
-                )
+st.sidebar.markdown("---")
 
-elif page == "📉 Market Analysis":
-    st.title("📉 Market Disparity Analysis")
+st.sidebar.markdown("### 📌 Benchmark Scope")
+st.sidebar.caption("Select which competitor companies to include in benchmark calculations.")
 
-    if len(f_df):
-        avg_var = int(f_df['Variance %'].mean())
-        worst_d = f_df.groupby('Department')['Variance %'].mean().idxmin()
-        st.markdown(
-            f"""<div class="salary-card"><div class="ai-insight-box">
-            <b>Summary:</b> PCI is {abs(avg_var)}% {"behind" if avg_var < 0 else "ahead of"} the selected market scope.
-            Highest risk department: <b>{worst_d}</b>. Bubble size shows headcount.
-            </div></div>""",
-            unsafe_allow_html=True
-        )
+# -----------------------------
+# Load data (from uploads or local files)
+# -----------------------------
+DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = px.scatter(
-                f_df, x='Market_Avg', y='Your Salary (AED)', size='Live_HC', color='Department',
-                hover_name='Designation', title="Positioning Matrix (PCI vs Market Avg)"
-            )
-            diag_max = float(max(f_df['Market_Avg'].max(), f_df['Your Salary (AED)'].max()))
-            fig.add_shape(type='line', x0=0, y0=0, x1=diag_max, y1=diag_max,
-                          line=dict(color='white', dash='dash'))
-            fig.update_layout(template="plotly_dark")
-            st.plotly_chart(fig, use_container_width=True)
+DEFAULT_MARKET = os.path.join(DATA_DIR, "Market_salary.csv")
+DEFAULT_PAYROLL = os.path.join(DATA_DIR, "actuals_payroll.csv")
+DEFAULT_CORE = os.path.join(DATA_DIR, "salary_data.csv")
 
-        with c2:
-            dept_var = f_df.groupby('Department')['Variance %'].mean().reset_index().sort_values('Variance %')
-            fig2 = px.bar(
-                dept_var, x='Variance %', y='Department', orientation='h', title="Avg Gap by Department (%)"
-            )
-            fig2.update_layout(template="plotly_dark")
-            st.plotly_chart(fig2, use_container_width=True)
+def load_df_from_uploader(upl, fallback_path):
+    if upl is not None:
+        return pd.read_csv(upl)
+    if os.path.exists(fallback_path):
+        return pd.read_csv(fallback_path)
+    return pd.DataFrame()
 
-        st.subheader("⚠️ High-Priority Adjustment List (<= -20%)")
-        st.dataframe(
-            f_df[f_df['Variance %'] <= -20][['Designation','Department','Live_HC','Your Salary (AED)','Market_Avg','Variance %']]
-            .sort_values('Variance %'),
-            use_container_width=True,
-            hide_index=True
-        )
+market_df = load_df_from_uploader(upl_market, DEFAULT_MARKET)
+payroll_df = load_df_from_uploader(upl_payroll, DEFAULT_PAYROLL)
+core_df = load_df_from_uploader(upl_core, DEFAULT_CORE)
 
-elif page == "👥 PCI Employees":
-    st.title("👥 PCI Employees Intelligence")
+# Basic validation / normalize columns
+for df in [market_df, payroll_df, core_df]:
+    if len(df) > 0:
+        df.columns = [c.strip() for c in df.columns]
 
-    if len(f_emp):
-        e1, e2, e3, e4 = st.columns(4)
-        e1.metric("Selected Employees", len(f_emp))
-        e2.metric("Loyal Staff (>5y)", int((f_emp['Tenure_Y'] >= 5).sum()))
-        e3.metric("Avg. Tenure", f"{round(f_emp['Tenure_Y'].mean(), 1)} Yrs")
-        e4.metric("Employees <= -15%", int((f_emp['Gap %'] <= -15).sum()))
+# Build engine (uses salary_engine module)
+engine = None
+try:
+    engine = build_engine(market_df, payroll_df, core_df)
+except Exception as e:
+    engine = None
+    st.error(f"Could not build engine: {e}")
 
-        st.markdown(
-            f"""<div class="salary-card"><div class="ai-insight-box">
-            <b>Payroll health:</b> {int((f_emp['Gap %'] < -10).sum())} employees are under market by more than 10%.
-            Loyal-at-risk (3y+ and <= -10%): <b>{int(((f_emp['Tenure_Y'] >= 3) & (f_emp['Gap %'] < -10)).sum())}</b>.
-            </div></div>""",
-            unsafe_allow_html=True
-        )
+# If engine is not available, show instructions
+if engine is None:
+    st.warning("Engine not ready. Please ensure CSV files are present and have correct columns.")
+    st.stop()
 
-        sel_name = st.selectbox("Spotlight Employee:", sorted(f_emp['Employee Name'].unique()))
-        if sel_name:
-            ed = f_emp[f_emp['Employee Name'] == sel_name].iloc[0]
-            ca, cb = st.columns([1, 2])
-            with ca:
-                st.markdown(
-                    f"""<div class="profile-card"><h3>{ed['Employee Name']}</h3>
-                    <p>ID: {ed['Employee ID']} | Tenure: {ed['Tenure_Text']}</p>
-                    <p>Joined: {ed['Date of Joining']}</p><hr>
-                    <p>Salary: {int(ed['Salary']):,} AED |
-                    <span class="{'highlight-red' if ed['Gap %'] < 0 else 'highlight-green'}">
-                    Gap: {int(ed['Gap %'])}%</span></p></div>""",
-                    unsafe_allow_html=True
-                )
-            with cb:
-                st.markdown("#### Role Benchmark (Selected Market Scope)")
-                st.write(
-                    {
-                        "Benchmark Low": f"{int(ed['Benchmark_Low']):,}",
-                        "Benchmark Mid": f"{int(ed['Benchmark_Mid']):,}",
-                        "Benchmark High": f"{int(ed['Benchmark_High']):,}",
-                        "Market Avg": f"{int(ed['Market_Avg']):,}",
-                    }
-                )
+# Determine competitor list from engine
+competitors = engine.get("competitors", [])
+if not competitors:
+    competitors = sorted(list(set(market_df.get("Company", pd.Series([])).dropna().astype(str).tolist())))
 
-        def style_status(v):
-            return f'color: {"#ef4444" if v < 0 else "#22c55e"}; font-weight: bold'
+selected_companies = st.sidebar.multiselect(
+    "Competitor Companies",
+    options=competitors,
+    default=competitors,
+)
 
-        st.dataframe(
-            f_emp[['Employee ID','Employee Name','Designation','Department','Tenure_Text','Salary','Market_Avg','Gap %']]
-            .style.applymap(style_status, subset=['Gap %']),
-            use_container_width=True,
-            hide_index=True
-        )
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📅 Snapshot")
+st.sidebar.write(datetime.now().strftime("%d %b %Y • %I:%M %p"))
 
-elif page == "📈 Increment Planner":
-    st.title("📈 Increment Strategy Simulator")
-
-    target = st.selectbox("Select Employee:", sorted(f_emp['Employee Name'].unique()) if len(f_emp) else [])
-    if target:
-        data = f_emp[f_emp['Employee Name'] == target].iloc[0]
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            pct = st.number_input("Increment %", 0.0, 50.0, 5.0)
-            new_s = int(data['Salary'] * (1 + pct/100))
-            gap_af = int(((new_s - data['Market_Avg']) / data['Market_Avg'] if data['Market_Avg'] != 0 else 0) * 100)
-            st.metric("Proposed Salary", f"{new_s:,} AED", f"+{new_s - int(data['Salary']):,}")
-            st.metric("New Market Gap", f"{gap_af}%")
-        with col2:
-            st.markdown(
-                f"""<div class="salary-card"><div class="ai-insight-box">
-                <b>Budget note:</b> Monthly impact: {new_s - int(data['Salary']):,} AED.
-                After increment, employee is: <b>{'Still under market' if gap_af < -5 else 'Near aligned'}</b>.
-                </div></div>""",
-                unsafe_allow_html=True
-            )
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=new_s,
-                title={'text': "Market Position Gauge"},
-                gauge={
-                    'axis': {'range': [0, data['Market_Avg']*1.5 if data['Market_Avg'] != 0 else 10000]},
-                    'steps': [
-                        {'range': [0, data['Market_Avg']*0.9], 'color': "red"},
-                        {'range': [data['Market_Avg']*0.9, data['Market_Avg']*1.1], 'color': "green"},
-                    ]
-                }
-            ))
-            fig.update_layout(template="plotly_dark", height=280)
-            st.plotly_chart(fig, use_container_width=True)
-
-elif page == "📦 Export":
-    st.title("📦 Export & Automation")
-
+# -----------------------------
+# Top header
+# -----------------------------
+colA, colB = st.columns([0.7, 0.3])
+with colA:
+    st.markdown("## 📊 PCI Salary Benchmark Dashboard")
+    st.markdown('<div class="muted">Modern benchmarking view: PCI vs UAE cement market (select competitors in sidebar).</div>', unsafe_allow_html=True)
+with colB:
+    st.markdown("")
+    st.markdown("")
     st.markdown(
-        """<div class="note-box">
-        Exports use the currently selected filters (departments + competitor scope).
-        </div>""",
+        f'<div class="insight"><b>Scope:</b> {len(selected_companies)} companies<br/>'
+        f'<b>Roles:</b> {engine["roles_count"]} &nbsp; • &nbsp; <b>Employees:</b> {engine["employees_count"]}</div>',
         unsafe_allow_html=True
     )
 
-    # Build filtered exports
-    exp_role = f_df.copy()
-    exp_emp = f_emp.copy()
+st.markdown('<hr class="soft"/>', unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
+# -----------------------------
+# Navigation tabs
+# -----------------------------
+tabs = st.tabs(["🏁 Executive", "🏢 Market", "👥 Employees", "🧭 Planner", "📤 Export"])
+
+plot_template = choose_plotly_template(theme_mode)
+
+# -----------------------------
+# EXECUTIVE TAB
+# -----------------------------
+with tabs[0]:
+    # Compute KPIs for selected scope
+    kpis = engine["kpis"](selected_companies)
+
+    k1 = build_kpi_card("PCI Avg Salary (AED)", fmt_aed(kpis["pci_avg"]), "Average across all employees")
+    k2 = build_kpi_card("Market Avg (AED)", fmt_aed(kpis["market_avg"]), "Average midpoint across selected competitors")
+    k3 = build_kpi_card("Avg Gap vs Market", safe_pct(kpis["avg_gap_pct"]), "Positive = PCI above market", badge_text=("Above" if kpis["avg_gap_pct"] and kpis["avg_gap_pct"] > 0 else "Below"))
+    k4 = build_kpi_card("Critical Roles", f"{kpis['critical_roles']}", "Roles with gap below -10%")
+
+    st.markdown(f'<div class="kpi-grid">{k1}{k2}{k3}{k4}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-title">Top Insights</div>', unsafe_allow_html=True)
+
+    insights = engine["insights"](selected_companies)
+    left, right = st.columns([0.55, 0.45], gap="large")
+
+    with left:
+        st.markdown('<div class="insight">', unsafe_allow_html=True)
+        st.markdown("**Key findings (auto):**")
+        for line in insights["bullets"][:7]:
+            st.write("• " + line)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="section-title">Gap Distribution</div>', unsafe_allow_html=True)
+        hist_df = insights["gap_distribution"]
+        if len(hist_df) > 0:
+            fig = px.histogram(
+                hist_df,
+                x="GapPct",
+                nbins=20,
+                title="PCI vs Market Gap (%) across roles",
+                template=plot_template,
+            )
+            fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=320)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Gap distribution not available.")
+
+    with right:
+        st.markdown('<div class="section-title">Roles to Watch</div>', unsafe_allow_html=True)
+        watch_df = insights["watch_roles"]
+        if len(watch_df) > 0:
+            st.dataframe(watch_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No watch roles detected based on current rules.")
+
+        st.markdown('<div class="section-title">Department Heatmap</div>', unsafe_allow_html=True)
+        heat = insights["dept_heatmap"]
+        if len(heat) > 0:
+            fig2 = px.imshow(
+                heat,
+                aspect="auto",
+                title="Avg Gap% by Department & Role Cluster",
+                template=plot_template,
+            )
+            fig2.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=360)
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Heatmap not available (missing department/cluster fields).")
+
+# -----------------------------
+# MARKET TAB
+# -----------------------------
+with tabs[1]:
+    st.markdown('<div class="section-title">Market Benchmark Table</div>', unsafe_allow_html=True)
+    st.markdown('<div class="muted">Benchmark Low/Mid/High are calculated from competitor salary ranges (midpoint aggregation).</div>', unsafe_allow_html=True)
+
+    market_table = engine["market_table"](selected_companies)
+
+    # Search
+    c1, c2 = st.columns([0.6, 0.4])
     with c1:
-        if st.button("Generate Strategy PDF"):
-            avg_v = int(exp_role['Variance %'].mean()) if len(exp_role) else 0
-            worst_d = exp_role.groupby('Department')['Variance %'].mean().idxmin() if len(exp_role) else "N/A"
-            crit_df = exp_role[exp_role['Variance %'] <= -15].sort_values('Variance %')
-            loyalty_count = int((exp_emp['Tenure_Y'] >= 5).sum()) if len(exp_emp) else 0
-            pdf_bytes = generate_graphical_pdf(exp_role, avg_v, worst_d, int(exp_role['Live_HC'].sum()), crit_df, loyalty_count)
-            st.download_button("📥 Download PDF Report", data=pdf_bytes, file_name="PCI_Strategic_Report.pdf", mime="application/pdf")
+        query = st.text_input("🔎 Search role / designation", value="")
+    with c2:
+        gap_filter = st.selectbox("Filter by gap", ["All", "PCI Below Market (<0%)", "PCI Far Below (<= -10%)", "PCI Above (>0%)"])
+
+    filtered = market_table.copy()
+    if query.strip():
+        q = query.strip().lower()
+        for col in ["Designation", "Department"]:
+            if col in filtered.columns:
+                filtered = filtered[filtered[col].astype(str).str.lower().str.contains(q, na=False)]
+                break
+
+    if "GapPct" in filtered.columns:
+        if gap_filter == "PCI Below Market (<0%)":
+            filtered = filtered[filtered["GapPct"] < 0]
+        elif gap_filter == "PCI Far Below (<= -10%)":
+            filtered = filtered[filtered["GapPct"] <= -10]
+        elif gap_filter == "PCI Above (>0%)":
+            filtered = filtered[filtered["GapPct"] > 0]
+
+    st.dataframe(filtered, use_container_width=True, hide_index=True)
+
+    st.markdown('<hr class="soft"/>', unsafe_allow_html=True)
+
+    st.markdown('<div class="section-title">Role Comparison Chart</div>', unsafe_allow_html=True)
+    st.caption("Pick a role to compare PCI vs Benchmark Range.")
+
+    roles = market_table["Designation"].dropna().unique().tolist() if "Designation" in market_table.columns else []
+    picked_role = st.selectbox("Select Role", roles if roles else ["(No roles)"])
+
+    if roles and picked_role:
+        row = market_table[market_table["Designation"] == picked_role].head(1)
+        if len(row) > 0:
+            low = float(row["BenchLow"].values[0]) if "BenchLow" in row.columns else np.nan
+            mid = float(row["BenchMid"].values[0]) if "BenchMid" in row.columns else np.nan
+            high = float(row["BenchHigh"].values[0]) if "BenchHigh" in row.columns else np.nan
+            pci = float(row["PCISalary"].values[0]) if "PCISalary" in row.columns else np.nan
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name="Benchmark Low", x=["Range"], y=[low]))
+            fig.add_trace(go.Bar(name="Benchmark Mid", x=["Range"], y=[mid]))
+            fig.add_trace(go.Bar(name="Benchmark High", x=["Range"], y=[high]))
+            fig.add_trace(go.Scatter(name="PCI Salary", x=["Range"], y=[pci], mode="markers", marker=dict(size=14)))
+            fig.update_layout(
+                barmode="group",
+                template=plot_template,
+                title=f"{picked_role}: PCI vs Market Benchmark (AED)",
+                margin=dict(l=10, r=10, t=50, b=10),
+                height=380,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------------
+# EMPLOYEES TAB
+# -----------------------------
+with tabs[2]:
+    st.markdown('<div class="section-title">Employee Salary View</div>', unsafe_allow_html=True)
+    st.markdown('<div class="muted">Search employees and review distribution by department/designation.</div>', unsafe_allow_html=True)
+
+    emp = engine["employees_table"]()
+
+    e1, e2, e3 = st.columns([0.45, 0.25, 0.30])
+    with e1:
+        emp_query = st.text_input("🔎 Search Employee (Name/ID)", "")
+    with e2:
+        dept = st.selectbox("Department", ["All"] + sorted(emp["Department"].dropna().astype(str).unique().tolist()) if "Department" in emp.columns else ["All"])
+    with e3:
+        desig = st.selectbox("Designation", ["All"] + sorted(emp["Designation"].dropna().astype(str).unique().tolist()) if "Designation" in emp.columns else ["All"])
+
+    emp_f = emp.copy()
+    if emp_query.strip():
+        q = emp_query.strip().lower()
+        cols = [c for c in emp_f.columns if c.lower() in ["employee name", "employee", "name", "emp no", "employee id", "id", "emp id"]]
+        if cols:
+            mask = False
+            for c in cols:
+                mask = mask | emp_f[c].astype(str).str.lower().str.contains(q, na=False)
+            emp_f = emp_f[mask]
+        else:
+            # fallback: search all columns
+            mask = emp_f.apply(lambda r: r.astype(str).str.lower().str.contains(q, na=False).any(), axis=1)
+            emp_f = emp_f[mask]
+
+    if dept != "All" and "Department" in emp_f.columns:
+        emp_f = emp_f[emp_f["Department"].astype(str) == dept]
+    if desig != "All" and "Designation" in emp_f.columns:
+        emp_f = emp_f[emp_f["Designation"].astype(str) == desig]
+
+    st.dataframe(emp_f, use_container_width=True, hide_index=True)
+
+    st.markdown('<hr class="soft"/>', unsafe_allow_html=True)
+
+    c1, c2 = st.columns([0.5, 0.5], gap="large")
+    with c1:
+        st.markdown('<div class="section-title">Salary Distribution</div>', unsafe_allow_html=True)
+        if "Salary" in emp.columns:
+            fig = px.histogram(emp_f, x="Salary", nbins=30, template=plot_template, title="Salary Distribution (AED)")
+            fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=330)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Salary column not found.")
 
     with c2:
-        if st.button("Build Excel Benchmark Pack"):
-            xlsx_bytes = build_excel_pack(exp_role, exp_emp)
-            st.download_button("📥 Download Excel Pack", data=xlsx_bytes, file_name="PCI_Salary_Benchmark_Pack.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.markdown('<div class="section-title">Top 10 Salaries</div>', unsafe_allow_html=True)
+        if "Salary" in emp_f.columns:
+            top10 = emp_f.sort_values("Salary", ascending=False).head(10)
+            fig = px.bar(top10, x="Salary", y=("Employee Name" if "Employee Name" in top10.columns else top10.columns[0]),
+                         orientation="h", template=plot_template, title="Top 10 Salaries (AED)")
+            fig.update_layout(margin=dict(l=10, r=10, t=50, b=10), height=330)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Salary column not found.")
 
-    st.markdown("### Automated (Batch) Run")
-    st.code(
-        "python build_reports.py --core salary_data.csv --payroll actuals_payroll.csv --market Market_salary.csv --out PCI_Salary_Benchmark_Pack.xlsx",
-        language="bash"
+# -----------------------------
+# PLANNER TAB
+# -----------------------------
+with tabs[3]:
+    st.markdown('<div class="section-title">Increment / Budget Planner</div>', unsafe_allow_html=True)
+    st.markdown('<div class="muted">Simulate a budget-based increment plan for critical below-market roles.</div>', unsafe_allow_html=True)
+
+    planner = engine["planner"](selected_companies)
+
+    c1, c2, c3 = st.columns([0.33, 0.33, 0.34])
+    with c1:
+        total_budget = st.number_input("Total Budget (AED)", min_value=0.0, value=float(planner["default_budget"]), step=1000.0)
+    with c2:
+        target_gap = st.slider("Target Minimum Gap%", min_value=-30, max_value=0, value=-5, step=1)
+    with c3:
+        focus_only_critical = st.checkbox("Only roles <= -10% gap", value=True)
+
+    plan_df, summary = engine["build_plan"](selected_companies, total_budget, target_gap, focus_only_critical)
+
+    st.markdown('<div class="section-title">Plan Summary</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="insight">'
+        f'<b>Roles in plan:</b> {summary["roles_in_plan"]} &nbsp; • &nbsp; '
+        f'<b>Employees impacted:</b> {summary["employees_impacted"]} &nbsp; • &nbsp; '
+        f'<b>Budget used:</b> AED {fmt_aed(summary["budget_used"])} / {fmt_aed(total_budget)}'
+        f'<br/><span class="muted">Rule:</span> bring roles up to at least {target_gap}% gap where possible.</div>',
+        unsafe_allow_html=True
     )
+
+    st.markdown('<div class="section-title">Recommended Adjustments</div>', unsafe_allow_html=True)
+    st.dataframe(plan_df, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "⬇️ Download Plan (CSV)",
+        data=df_to_download_bytes(plan_df, "csv"),
+        file_name="increment_plan.csv",
+        mime="text/csv",
+    )
+
+# -----------------------------
+# EXPORT TAB
+# -----------------------------
+with tabs[4]:
+    st.markdown('<div class="section-title">Export Reports</div>', unsafe_allow_html=True)
+    st.markdown('<div class="muted">Generate board-ready Excel pack and a quick PDF summary.</div>', unsafe_allow_html=True)
+
+    out_dir = os.path.join(DATA_DIR, "exports")
+    os.makedirs(out_dir, exist_ok=True)
+
+    c1, c2 = st.columns([0.55, 0.45], gap="large")
+
+    with c1:
+        st.markdown("### 📘 Excel Benchmark Pack")
+        st.caption("Includes: Market table, PCI vs Market gap, benchmark low/mid/high, summary KPIs.")
+        if st.button("Generate Excel Pack"):
+            try:
+                excel_path = os.path.join(out_dir, f"PCI_Salary_Benchmark_Pack_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+                build_excel_pack(engine, selected_companies, excel_path)
+                with open(excel_path, "rb") as f:
+                    st.download_button(
+                        "⬇️ Download Excel Pack",
+                        data=f,
+                        file_name=os.path.basename(excel_path),
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                st.success("Excel pack generated.")
+            except Exception as e:
+                st.error(f"Excel generation failed: {e}")
+
+    with c2:
+        st.markdown("### 🧾 PDF Summary")
+        st.caption("One-page summary: KPIs + key bullets + snapshot.")
+        if st.button("Generate PDF Summary"):
+            try:
+                kpis = engine["kpis"](selected_companies)
+                insights = engine["insights"](selected_companies)
+                lines = [
+                    f"Date: {datetime.now().strftime('%d %b %Y %H:%M')}",
+                    "",
+                    f"PCI Avg Salary (AED): {fmt_aed(kpis['pci_avg'])}",
+                    f"Market Avg (AED): {fmt_aed(kpis['market_avg'])}",
+                    f"Avg Gap vs Market: {safe_pct(kpis['avg_gap_pct'])}",
+                    f"Critical Roles (<= -10%): {kpis['critical_roles']}",
+                    "",
+                    "Key Findings:",
+                ] + [f"- {b}" for b in insights["bullets"][:10]]
+
+                pdf_path = os.path.join(out_dir, f"PCI_Benchmark_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf")
+                export_pdf_summary(lines, pdf_path)
+
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        "⬇️ Download PDF",
+                        data=f,
+                        file_name=os.path.basename(pdf_path),
+                        mime="application/pdf",
+                    )
+                st.success("PDF summary generated.")
+            except Exception as e:
+                st.error(f"PDF generation failed: {e}")
+
+    st.markdown('<hr class="soft"/>', unsafe_allow_html=True)
+    st.markdown("### 📦 Data Export")
+    market_table = engine["market_table"](selected_companies)
+    st.download_button(
+        "⬇️ Download Market Table (CSV)",
+        data=df_to_download_bytes(market_table, "csv"),
+        file_name="market_table.csv",
+        mime="text/csv",
+    )
+    emp = engine["employees_table"]()
+    st.download_button(
+        "⬇️ Download Employee Table (CSV)",
+        data=df_to_download_bytes(emp, "csv"),
+        file_name="employee_table.csv",
+        mime="text/csv",
+    )
+
+# -----------------------------
+# Notes / footer help
+# -----------------------------
+st.markdown('<hr class="soft"/>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="muted small-help">Tip: Use the sidebar to select competitor companies. '
+    'Benchmark Low/Mid/High and Gap% will update instantly.</div>',
+    unsafe_allow_html=True
+)
